@@ -1,0 +1,85 @@
+---
+- name: Post-Patching Health Check Agent
+  hosts: prod_servers  # RESTRICTED TO PROD
+  gather_facts: no
+  
+  vars:
+    # UPDATABLE: Add your real webhook URLs here
+    slack_webhook: "https://hooks.slack.com/services/YOUR/TOKEN"
+    webex_webhook: "https://webexapis.com/v1/webhooks/incoming/YOUR_TOKEN"
+    email_to: "sre-team@yourcompany.com"
+    email_from: "ansible-tower@yourcompany.com"
+
+  tasks:
+    # --- PHASE 1: INITIAL CHECK ---
+    - name: Check Server Connectivity (Attempt 1)
+      wait_for_connection:
+        timeout: 5
+      register: first_check
+      ignore_errors: yes
+
+    # --- PHASE 2: RETRY LOGIC (10 MIN WAIT) ---
+    - name: Wait 10 minutes if server is down (Retry Logic)
+      pause:
+        minutes: 10
+      when: first_check is failed
+
+    - name: Check Server Connectivity (Final Attempt)
+      wait_for_connection:
+        timeout: 10
+      register: final_check
+      ignore_errors: yes
+      when: first_check is failed
+
+    # --- PHASE 3: CALCULATE RESULTS ---
+    - name: Identify Failed Servers
+      set_fact:
+        down_servers: "{{ ansible_play_hosts | map('extract', hostvars, 'final_check') | selectattr('failed', 'defined') | selectattr('failed', 'equalto', true) | list }}"
+        
+    - name: Identify Successful Servers
+      set_fact:
+        up_servers: "{{ ansible_play_hosts | difference(down_servers) }}"
+
+    # --- PHASE 4: NOTIFICATIONS ---
+    - block:
+        # SUCCESS SCENARIO
+        - name: Notify Slack - Success
+          uri:
+            url: "{{ slack_webhook }}"
+            method: POST
+            body_format: json
+            body:
+              text: "✅ *Post-Patch Health Check Completed*: All {{ ansible_play_hosts | length }} PROD servers are back online."
+          when: down_servers | length == 0
+
+        - name: Notify Outlook - Success
+          mail:
+            host: smtp.yourcompany.com
+            port: 25
+            to: "{{ email_to }}"
+            from: "{{ email_from }}"
+            subject: "SUCCESS: Post-Patch Health Check"
+            body: "All PROD servers are online. No action required."
+          when: down_servers | length == 0
+
+        # FAILURE SCENARIO
+        - name: Notify Slack - Failure
+          uri:
+            url: "{{ slack_webhook }}"
+            method: POST
+            body_format: json
+            body:
+              text: "🚨 *Health Check Alert*: The following servers are still down after 10 minute retry:\n{{ down_servers | join('\n') }}"
+          when: down_servers | length > 0
+
+        - name: Notify Webex - Failure
+          uri:
+            url: "{{ webex_webhook }}"
+            method: POST
+            body_format: json
+            body:
+              markdown: "🚨 **Health Check Alert**: The following servers are still down:\n- {{ down_servers | join('\n- ') }}"
+          when: down_servers | length > 0
+          
+      run_once: true
+      delegate_to: localhost
