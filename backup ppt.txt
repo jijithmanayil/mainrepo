@@ -1,0 +1,39 @@
+🕒
+                        [ TRIGGER: SCHEDULE ]
+                       (Every Sat @ 05:00 AM)
+                                 │
+                                 ▼
+                     +-----------------------+
+                     |  Ansible Tower Job    |
+                     | "Prod_Health_Check"   |
+                     +-----------------------+
+                                 │
+                                 ▼
+                    🔶 QUERY: PROD INVENTORY 🔶
+                   (Ping & Check Services: HTTP/DB)
+                                 │
+                      ___________▼___________
+                     |                       |
+            ✅ ALL SERVERS UP?         ❌ SERVERS DOWN?
+                     |                       |
+                     |                       ▼
+                     |               ⏳ [ WAIT 10 MINS ]
+                     |              (Smart Retry Logic)
+                     |                       |
+                     |                       ▼
+                     |               🔄 [ RE-CHECK ]
+                     |                       │
+                     |             __________▼__________
+                     |            |                     |
+                     |      ✅ RECOVERED?         ❌ STILL DOWN?
+                     |            |                     |
+                     |            |                     ▼
+                     ▼            ▼             [ ADD TO "FAIL LIST" ]
+             [ COMPILE SUCCESS REPORT ]                 |
+                     │                                  |
+                     │                                  |
+          ___________▼___________             __________▼__________
+         |                       |           |                     |
+   🟢 SLACK/OUTLOOK        🟢 (No Action)   🔴 SLACK / WEBEX     🔴 PAGERDUTY
+   "All Systems Green"                       "CRITICAL ALERT"      (Optional)
+                                             "Server X is Down"

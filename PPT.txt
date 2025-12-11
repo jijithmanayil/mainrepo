@@ -1,0 +1,33 @@
+graph TD
+    %% Define Styles
+    classDef trigger fill:#E1F5FE,stroke:#01579B,stroke-width:2px;
+    classDef action fill:#FFF9C4,stroke:#FBC02D,stroke-width:2px;
+    classDef decision fill:#E8EAF6,stroke:#3F51B5,stroke-width:2px,shape:diamond;
+    classDef success fill:#C8E6C9,stroke:#2E7D32,stroke-width:2px;
+    classDef fail fill:#FFCDD2,stroke:#C62828,stroke-width:2px;
+
+    %% The Flow
+    Start((Start: Sat 05:00 AM)):::trigger -->|Scheduled Trigger| Tower[Ansible Tower]
+    
+    subgraph "Phase 1: Validation"
+        Tower -->|Target: PROD Only| ProdServers[Query Production Inventory]
+        ProdServers --> Check1{Connectivity Check}:::decision
+    end
+
+    Check1 -- "Server UP" --> ListSuccess[Add to Success List]:::success
+    Check1 -- "Server DOWN" --> Wait[Wait 10 Minutes \n Auto-Retry Logic]:::action
+    
+    subgraph "Phase 2: Intelligent Retry"
+        Wait --> Check2{Final Re-Check}:::decision
+        Check2 -- "Server Recovered" --> ListSuccess
+        Check2 -- "Server STILL DOWN" --> ListFail[Add to Failure List]:::fail
+    end
+
+    subgraph "Phase 3: Notification & Alerting"
+        ListSuccess --> Aggregator[Aggregate Results]
+        ListFail --> Aggregator
+        Aggregator --> Decide{Any Failures?}:::decision
+        
+        Decide -- "All Clean" --> SlackGreen[Slack/Outlook: \n ✅ All Systems Green]:::success
+        Decide -- "Critical Failures" --> SlackRed[Slack/Webex: \n 🚨 Critical Alert: \n List Specific Servers]:::fail
+    end
